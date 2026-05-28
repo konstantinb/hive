@@ -148,7 +148,7 @@ class TestStatsUtils {
     data.setLongStats(longStats);
     cso.setStatsData(data);
 
-    ColStatistics cs = StatsUtils.getColStatistics(cso, "test_col");
+    ColStatistics cs = StatsUtils.getColStatistics(cso, "test_col", 100);
 
     assertNotNull(cs, "ColStatistics should not be null");
     assertEquals(100, cs.getCountDistint(), "NumDVs mismatch");
@@ -192,7 +192,7 @@ class TestStatsUtils {
     data.setDoubleStats(doubleStats);
     cso.setStatsData(data);
 
-    ColStatistics cs = StatsUtils.getColStatistics(cso, "test_col");
+    ColStatistics cs = StatsUtils.getColStatistics(cso, "test_col", 100);
 
     assertNotNull(cs, "ColStatistics should not be null");
     assertEquals(100, cs.getCountDistint(), "NumDVs mismatch");
@@ -400,11 +400,46 @@ class TestStatsUtils {
     cso.setColType(typeName);
     cso.setStatsData(data);
 
-    ColStatistics cs = StatsUtils.getColStatistics(cso, "test_col");
+    // numNulls=10 < numRows=100 -> column is not provably all-NULL -> inference doesn't fire
+    ColStatistics cs = StatsUtils.getColStatistics(cso, "test_col", 100);
 
     assertNotNull(cs, "ColStatistics should not be null for " + typeName);
     assertEquals(-1, cs.getCountDistint(),
         "When numDVs is unset for " + typeName + ", NDV should be -1");
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("getColStatisticsUnsetNumDVsCases")
+  void testGetColStatisticsInfersZeroNDVWhenAllNull(
+      String typeName, ColumnStatisticsData data) {
+    ColumnStatisticsObj cso = new ColumnStatisticsObj();
+    cso.setColName("test_col");
+    cso.setColType(typeName);
+    cso.setStatsData(data);
+
+    // test data has numNulls=10; with numRows=10 the column is provably all-NULL
+    ColStatistics cs = StatsUtils.getColStatistics(cso, "test_col", 10);
+
+    assertNotNull(cs, "ColStatistics should not be null for " + typeName);
+    assertEquals(0, cs.getCountDistint(),
+        "numNulls == numRows for " + typeName + " should infer NDV = 0");
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("getColStatisticsUnsetNumDVsCases")
+  void testGetColStatisticsInfersOneNDVWhenSingleNonNull(
+      String typeName, ColumnStatisticsData data) {
+    ColumnStatisticsObj cso = new ColumnStatisticsObj();
+    cso.setColName("test_col");
+    cso.setColType(typeName);
+    cso.setStatsData(data);
+
+    // test data has numNulls=10; with numRows=11 there is exactly one non-null row
+    ColStatistics cs = StatsUtils.getColStatistics(cso, "test_col", 11);
+
+    assertNotNull(cs, "ColStatistics should not be null for " + typeName);
+    assertEquals(1, cs.getCountDistint(),
+        "numNulls == numRows-1 for " + typeName + " should infer NDV = 1");
   }
 
   private static Stream<Arguments> getColStatisticsUnsetNumDVsCases() {
@@ -502,7 +537,7 @@ class TestStatsUtils {
     data.setBooleanStats(boolStats);
     cso.setStatsData(data);
 
-    ColStatistics cs = StatsUtils.getColStatistics(cso, "bool_col");
+    ColStatistics cs = StatsUtils.getColStatistics(cso, "bool_col", 100);
 
     assertNotNull(cs);
     assertEquals(2, cs.getCountDistint(), "Boolean NDV should be 2 when numTrues is unknown (-1)");
@@ -523,7 +558,7 @@ class TestStatsUtils {
     data.setBooleanStats(boolStats);
     cso.setStatsData(data);
 
-    ColStatistics cs = StatsUtils.getColStatistics(cso, "bool_col");
+    ColStatistics cs = StatsUtils.getColStatistics(cso, "bool_col", 100);
 
     assertNotNull(cs);
     assertEquals(2, cs.getCountDistint(), "Boolean NDV should be 2 when numFalses is unknown (-1)");
@@ -544,7 +579,7 @@ class TestStatsUtils {
     data.setBooleanStats(boolStats);
     cso.setStatsData(data);
 
-    ColStatistics cs = StatsUtils.getColStatistics(cso, "bool_col");
+    ColStatistics cs = StatsUtils.getColStatistics(cso, "bool_col", 100);
 
     assertNotNull(cs);
     assertEquals(2, cs.getCountDistint(), "Boolean NDV should be 2 when both numTrues and numFalses are unknown");
@@ -565,7 +600,7 @@ class TestStatsUtils {
     data.setBooleanStats(boolStats);
     cso.setStatsData(data);
 
-    ColStatistics cs = StatsUtils.getColStatistics(cso, "bool_col");
+    ColStatistics cs = StatsUtils.getColStatistics(cso, "bool_col", 100);
 
     assertNotNull(cs);
     assertEquals(0, cs.getCountDistint(), "Boolean NDV should be 0 for all-NULL column");
@@ -586,7 +621,7 @@ class TestStatsUtils {
     data.setBooleanStats(boolStats);
     cso.setStatsData(data);
 
-    ColStatistics cs = StatsUtils.getColStatistics(cso, "bool_col");
+    ColStatistics cs = StatsUtils.getColStatistics(cso, "bool_col", 100);
 
     assertNotNull(cs);
     assertEquals(1, cs.getCountDistint(), "Boolean NDV should be 1 when only TRUE values present");
@@ -607,7 +642,7 @@ class TestStatsUtils {
     data.setBooleanStats(boolStats);
     cso.setStatsData(data);
 
-    ColStatistics cs = StatsUtils.getColStatistics(cso, "bool_col");
+    ColStatistics cs = StatsUtils.getColStatistics(cso, "bool_col", 100);
 
     assertNotNull(cs);
     assertEquals(1, cs.getCountDistint(), "Boolean NDV should be 1 when only FALSE values present");
@@ -628,7 +663,7 @@ class TestStatsUtils {
     data.setBooleanStats(boolStats);
     cso.setStatsData(data);
 
-    ColStatistics cs = StatsUtils.getColStatistics(cso, "bool_col");
+    ColStatistics cs = StatsUtils.getColStatistics(cso, "bool_col", 100);
 
     assertNotNull(cs);
     assertEquals(1, cs.getCountDistint(), "Boolean NDV should be 1 when TRUE is 0 and FALSE is unknown");
@@ -649,7 +684,7 @@ class TestStatsUtils {
     data.setBooleanStats(boolStats);
     cso.setStatsData(data);
 
-    ColStatistics cs = StatsUtils.getColStatistics(cso, "bool_col");
+    ColStatistics cs = StatsUtils.getColStatistics(cso, "bool_col", 100);
 
     assertNotNull(cs);
     assertEquals(1, cs.getCountDistint(), "Boolean NDV should be 1 when TRUE is unknown and FALSE is 0");
@@ -770,7 +805,7 @@ class TestStatsUtils {
     data.setDateStats(dateStats);
     cso.setStatsData(data);
 
-    ColStatistics cs = StatsUtils.getColStatistics(cso, "date_col");
+    ColStatistics cs = StatsUtils.getColStatistics(cso, "date_col", 100);
 
     assertNotNull(cs, "ColStatistics should not be null");
     assertEquals(100, cs.getCountDistint(), "NumDVs mismatch for DATE");
@@ -801,7 +836,7 @@ class TestStatsUtils {
     data.setTimestampStats(tsStats);
     cso.setStatsData(data);
 
-    ColStatistics cs = StatsUtils.getColStatistics(cso, "ts_col");
+    ColStatistics cs = StatsUtils.getColStatistics(cso, "ts_col", 100);
 
     assertNotNull(cs, "ColStatistics should not be null");
     assertEquals(200, cs.getCountDistint(), "NumDVs mismatch for TIMESTAMP");

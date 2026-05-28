@@ -298,7 +298,7 @@ public class StatsUtils {
       long numErasureCodedFiles = getErasureCodedFiles(table);
 
       if (needColStats && !metaTable) {
-        colStats = getTableColumnStats(table, neededColumns, colStatsCache, fetchColStats);
+        colStats = getTableColumnStats(table, neededColumns, colStatsCache, fetchColStats, nr);
         if (estimateStats) {
           estimateStatsForMissingCols(neededColumns, colStats, conf, nr, schema);
         }
@@ -401,7 +401,7 @@ public class StatsUtils {
           stats.addToColumnStats(columnStats);
         } else {
           if (statsRetrieved) {
-            columnStats.addAll(convertColStats(aggrStats.getColStats()));
+            columnStats.addAll(convertColStats(aggrStats.getColStats(), nr));
           }
           int colStatsAvailable = neededColumns.size() + partitionCols.size() - partitionColsToRetrieve.size();
           if (columnStats.size() != colStatsAvailable) {
@@ -796,7 +796,7 @@ public class StatsUtils {
    *          - column name
    * @return ColStatistics
    */
-  public static ColStatistics getColStatistics(ColumnStatisticsObj cso, String colName) {
+  public static ColStatistics getColStatistics(ColumnStatisticsObj cso, String colName, long numRows) {
     String colTypeLowerCase = cso.getColType().toLowerCase();
     ColStatistics cs = new ColStatistics(colName, colTypeLowerCase);
     ColumnStatisticsData csd = cso.getStatsData();
@@ -886,6 +886,18 @@ public class StatsUtils {
     } else {
       // Columns statistics for complex datatypes are not supported yet
       return null;
+    }
+
+    // Infer NDV from numNulls when countDistint is unknown. Provable cases only:
+    //   nonNullCount == 0 -> NDV = 0; nonNullCount == 1 -> NDV = 1.
+    if (cs.getCountDistint() < 0 && cs.getNumNulls() >= 0 && numRows >= 0
+        && cs.getNumNulls() <= numRows) {
+      long nonNullCount = numRows - cs.getNumNulls();
+      if (nonNullCount == 0) {
+        cs.setCountDistint(0);
+      } else if (nonNullCount == 1) {
+        cs.setCountDistint(1);
+      }
     }
 
     return cs;
@@ -1007,7 +1019,8 @@ public class StatsUtils {
    * @return column statistics
    */
   public static List<ColStatistics> getTableColumnStats(
-      Table table, List<String> neededColumns, ColumnStatsList colStatsCache, boolean fetchColStats) {
+      Table table, List<String> neededColumns, ColumnStatsList colStatsCache, boolean fetchColStats,
+      long numRows) {
     List<ColStatistics> stats = new ArrayList<>();
     if (table.isMaterializedTable()) {
       LOG.debug("Materialized table does not contain table statistics");
@@ -1038,7 +1051,7 @@ public class StatsUtils {
       try {
         List<ColumnStatisticsObj> colStat = Hive.get().getTableColumnStatistics(
             table, colStatsToRetrieve, false);
-        stats = convertColStats(colStat);
+        stats = convertColStats(colStat, numRows);
       } catch (HiveException e) {
         LOG.error("Failed to retrieve table statistics: ", e);
       }
@@ -1059,13 +1072,13 @@ public class StatsUtils {
     return stats;
   }
 
-  private static List<ColStatistics> convertColStats(List<ColumnStatisticsObj> colStats) {
+  private static List<ColStatistics> convertColStats(List<ColumnStatisticsObj> colStats, long numRows) {
     if (colStats == null) {
       return Collections.emptyList();
     }
     List<ColStatistics> stats = new ArrayList<>(colStats.size());
     for (ColumnStatisticsObj statObj : colStats) {
-      ColStatistics cs = getColStatistics(statObj, statObj.getColName());
+      ColStatistics cs = getColStatistics(statObj, statObj.getColName(), numRows);
       if (cs != null) {
         stats.add(cs);
       }
